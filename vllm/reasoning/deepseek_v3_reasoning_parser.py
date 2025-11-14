@@ -4,6 +4,8 @@
 from collections.abc import Sequence
 from typing import Optional, Union
 
+from transformers import PreTrainedTokenizerBase
+
 from vllm.entrypoints.openai.protocol import (ChatCompletionRequest,
                                               DeltaMessage)
 from vllm.logger import init_logger
@@ -15,35 +17,38 @@ logger = init_logger(__name__)
 @ReasoningParserManager.register_module("deepseek_v3")
 class DeepSeekV3ReasoningParser(DeepSeekR1ReasoningParser):
 
-    def extract_reasoning_content_streaming(
+    def __init__(self, tokenizer: PreTrainedTokenizerBase, *args, **kwargs):
+        super().__init__(tokenizer, *args, **kwargs)
+
+        chat_kwargs = kwargs.pop("chat_template_kwargs", {}) or {}
+        self.thinking = bool(chat_kwargs.pop("thinking", False))
+
+    def extract_reasoning_streaming(
         self,
         previous_text: str,
         current_text: str,
         delta_text: str,
         previous_token_ids: Sequence[int],
         current_token_ids: Sequence[int],
-        delta_token_ids: Sequence[int],
-        request: ChatCompletionRequest,
+        delta_token_ids: Sequence[int]
     ) -> Union[DeltaMessage, None]:
-        if (request.chat_template_kwargs is not None and
-                request.chat_template_kwargs.get("thinking", False) is True):
-            return super().extract_reasoning_content_streaming(
+
+        if self.thinking:
+            return super().extract_reasoning_streaming(
                 previous_text,
                 current_text,
                 delta_text,
                 previous_token_ids,
                 current_token_ids,
-                delta_token_ids,
-                request,
+                delta_token_ids
             )
 
         return DeltaMessage(content=delta_text)
 
-    def extract_reasoning_content(
+    def extract_reasoning(
             self, model_output: str, request: ChatCompletionRequest
     ) -> tuple[Optional[str], Optional[str]]:
-        if (request.chat_template_kwargs is not None and
-                request.chat_template_kwargs.get("thinking", False) is True):
-            return super().extract_reasoning_content(model_output, request)
+        if self.thinking:
+            return super().extract_reasoning(model_output, request)
 
         return None, model_output
